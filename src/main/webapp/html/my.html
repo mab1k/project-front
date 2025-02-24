@@ -1,13 +1,20 @@
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>RPG</title>
-    <script src=https://code.jquery.com/jquery-3.6.0.min.js></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link href="/css/my.css" rel="stylesheet">
 </head>
-<body>
+<body onload="getList(0)">
 <h1>RPG admin panel</h1>
-<table border="1" width="600" id="characterTable" >
-    <thead>
+<label for="count1">Count per page</label>
+<select id="count1" onchange="getList(0)">
+    <option value="3">3</option>
+    <option value="5">5</option>
+    <option value="10">10</option>
+    <option value="20">20</option>
+</select>
+<table border="1" width="600" id="characterTable">
     <tr>
         <th>#</th>
         <th>Name</th>
@@ -17,45 +24,155 @@
         <th>Level</th>
         <th>Birthday</th>
         <th>Banned</th>
+        <th>Edit</th>
+        <th>Delete</th>
     </tr>
-    </thead>
-    <tbody>
-
-    </tbody>
 </table>
+<div id="buttons_page">Pages:</div>
 
-</body>
 <script>
-    async function fetchPlayers() {
+    async function getList(pageNum) {
         try {
-            const response = await fetch('/rest/players');
-            const players = await response.json();
-            const tableBody = document.getElementById('characterTable').getElementsByTagName('tbody')[0];
+            $('tr:has(td)').remove();
+            let url = "/rest/players?";
 
-            players.forEach((player, index) => {
-                let row = tableBody.insertRow();
-                row.insertCell(0).textContent = index + 1;
-                row.insertCell(1).textContent = player.name;
-                row.insertCell(2).textContent = player.title;
-                row.insertCell(3).textContent = player.race;
-                row.insertCell(4).textContent = player.profession;
-                row.insertCell(5).textContent = player.level
-                const timestamp = player.birthday;
+            let currentCountPage = $('#count1').val();
 
-                let dateRes = new Date(timestamp);
-                console.log(dateRes);
+            if (currentCountPage == null) {
+                currentCountPage = 3;
+            }
 
-               let resData = (dateRes.getMonth() + 1) + "/" + dateRes.getDate() + "/" + dateRes.getFullYear();
+            let urlRes = url.concat("pageSize=").concat(currentCountPage);
 
-                row.insertCell(6).textContent = resData;
-                row.insertCell(7).textContent = player.banned;
+            if (pageNum == null) {
+                pageNum = 0;
+            }
+
+            let urlRes1 = urlRes.concat("&pageNumber=").concat(pageNum);
+
+            const response = await $.get(urlRes1);
+            $.each(response, function (i, item) {
+                $('<tr>').html('<td>'
+                    + item.id + "</td><td>"
+                    + item.name + "</td><td>"
+                    + item.title + "</td><td>"
+                    + item.race + "</td><td>"
+                    + item.profession + "</td><td>"
+                    + item.level + "</td><td>"
+                    + new Date(item.birthday).toLocaleDateString() + "</td><td>"
+                    + item.banned + "</td><td>"
+                    + "<button id='button_edit_" + item.id + "' onclick='editAcc(" + item.id + ")'>"
+                    + "<img src='/img/edit.png'/>"
+                    + "</button>" + "</td><td>"
+                    + "<button id='button_delete_" + item.id + "' onclick='deleteAcc(" + item.id + ")'>"
+                    + "<img src='/img/delete.png'/>"
+                    + "</button>" + "</td>"
+                ).appendTo("#characterTable");
             });
+
+            let totalCount = await getCount();
+
+            let pagesCount = Math.ceil(totalCount / currentCountPage);
+
+            $('button.pgn_btn_style').remove();
+
+            for (let i = 0; i < pagesCount; i++) {
+                let button_tag = '<button>' + (i + 1) + '</button>';
+                let button = $(button_tag).attr('id', 'paging_button' + i)
+                    .attr('onclick', "getList(" + i + ")")
+                    .addClass('pgn_btn_style');
+                $('#buttons_page').append(button);
+            }
+
+            let idBut = "#paging_button" + pageNum;
+            $(idBut).css('color', 'red');
         } catch (error) {
-            console.error('Error fetching players:', error);
+            console.error("Ошибка при получении данных: ", error);
         }
     }
 
-    fetchPlayers();
+
+    async function getCount(){
+        //const response = await $.get("/rest/players/count");
+        let res = 0
+        await $.ajax({
+            url: "/rest/players/count",
+            success: function (result){
+                res = parseInt(result)
+            }
+        })
+
+        console.log(res);
+        return res;
+    }
+
+    async function deleteAcc(id) {
+        let url = "/rest/players/" + id;
+        await $.ajax({
+            url: url,
+            type: 'DELETE',
+            success: async function () {
+                await getList(getCurrentPage());
+            },
+            error: function (xhr, status, error) {
+                console.error("Ошибка при удалении: ", error);
+            }
+        });
+    }
+
+    function getCurrentPage() {
+        let currentPage = 1;
+        $('#buttons_page button').each(function () {
+            if ($(this).css('color') === 'rgb(255, 0, 0)') {
+                currentPage = $(this).text();
+            }
+        });
+        return parseInt(currentPage) - 1;
+    }
+
+    function editAcc(id){
+        let idEdit = "#button_edit_" + id;
+        let idDelete = "#button_delete_" + id;
+
+        $(idDelete).remove()
+
+        let save_img_tag = "<img src='/img/save.png'>";
+        $(idEdit).html(save_img_tag)
+
+       let currentTrEl = $(idEdit).parent().parent();
+       let children = currentTrEl.children();
+
+       let tdName = children[1]
+       tdName.innerHTML = "<input id='input_name_" + id + "' type='text' value='" + tdName.innerHTML + " '>";
+
+        let tdTitle = children[2]
+        tdTitle.innerHTML = "<input id='input_title_" + id + "' type='text' value='" + tdName.innerHTML + " '>";
+
+        let tdRace = children[3];
+        let raceId = "select_race_" + id;
+        let raceCurrent = tdRace.innerHTML;
+
+        tdRace.innerHTML = getElementsRace(id);
+
+        let $raceSelect = $("#" + raceId);
+        $raceSelect.val(raceCurrent).change();
+    }
+
+    function getElementsRace(id) {
+        let raceId = "select_race_" + id;
+        return "<label for='race'></label>" +
+            "<select id='" + raceId + "' name='race'>" +
+            "<option value='HUMAN'>HUMAN</option>" +
+            "<option value='DWARF'>DWARF</option>" +
+            "<option value='ELF'>ELF</option>" +
+            "<option value='GIANT'>GIANT</option>" +
+            "<option value='ORC'>ORC</option>" +
+            "<option value='TROLL'>TROLL</option>" +
+            "<option value='HOBBIT'>HOBBIT</option>" +
+            "</select>";
+    }
 
 </script>
+
+</body>
 </html>
